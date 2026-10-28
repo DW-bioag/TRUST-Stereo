@@ -6,7 +6,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-#from core.update import BasicMultiUpdateBlock, BasicMultiUpdateBlock_mix2
 from core.update import BasicMultiUpdateBlock_no_mono_disp, BasicMultiUpdateBlock_mix2
 from core.geometry import Combined_Geo_Encoding_Volume
 from core.submodule import *
@@ -17,8 +16,6 @@ import time
 from torchvision import transforms
 
 
-
-from torchvision import transforms
 import functools
 import math
 try:
@@ -31,19 +28,8 @@ except:
             pass
         def __exit__(self, *args):
             pass
-import sys
-from pathlib import Path
-#sys.path.append('./Depth-Anything-V2-list3')
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "Depth-Anything-V2-list_intermediate_level"))
-#from depth_anything_v2.dpt import DepthAnythingV2, DepthAnythingV2_decoder
-
-
-# from depth_anything_v2.dpt import (
-#     DepthAnythingV2,
-#     DepthAnythingV2_decoder,
-#     DepthAnythingV2IntermediateDecoder,
-# )
 
 
 from depth_anything_v2.dpt import (
@@ -53,10 +39,8 @@ from depth_anything_v2.dpt import (
     IntermediateDPTFeatureHead,
 )
 
-import torch
-import torch.nn as nn
 
-
+# Project ViT-S patch tokens into the teacher-assistant feature space.
 class StudentToTAProjection(nn.Module):
     """
     Project ViT-S tokens from 384 dimensions into the
@@ -110,6 +94,7 @@ class StudentToTAProjection(nn.Module):
 
         return projected_features
 
+# Build intermediate teacher-assistant features from student and teacher tokens.
 class IntermediateCrossAttentionEncoder(nn.Module):
     """
     Builds four intermediate encoder layers by fusing corresponding
@@ -191,11 +176,6 @@ class IntermediateCrossAttentionEncoder(nn.Module):
             student_patch_tokens, student_cls_token = student_layer
             teacher_patch_tokens, teacher_cls_token = teacher_layer
 
-            # Expected:
-            # student_patch_tokens: [B, N, 384]
-            # student_cls_token:    [B, 384]
-            # teacher_patch_tokens: [B, N, 1024]
-            # teacher_cls_token:    [B, 1024]
 
             if student_patch_tokens.shape[:2] != \
                     teacher_patch_tokens.shape[:2]:
@@ -211,10 +191,6 @@ class IntermediateCrossAttentionEncoder(nn.Module):
             if teacher_cls_token.ndim == 2:
                 teacher_cls_token = teacher_cls_token.unsqueeze(1)
 
-            # Add class token before all patch tokens:
-            #
-            # Student: [B, 1 + N, 384]
-            # Teacher: [B, 1 + N, 1024]
             student_all_tokens = torch.cat(
                 [
                     student_cls_token,
@@ -231,7 +207,6 @@ class IntermediateCrossAttentionEncoder(nn.Module):
                 dim=1,
             )
 
-            # [B, 1 + N, 704]
             fused_all_tokens = fusion_block(
                 student_all_tokens,
                 teacher_all_tokens,
@@ -248,142 +223,9 @@ class IntermediateCrossAttentionEncoder(nn.Module):
             )
 
         return fused_features
-# class CrossAttentionFusionBlock(nn.Module):
-#     """
-#     Fuse frozen ViT-S and ViT-L tokens using cross-attention.
-
-#     Student tokens:
-#         Query source
-
-#     Teacher tokens:
-#         Key and Value source
-
-#     Inputs:
-#         student_tokens: [B, L, 384]
-#         teacher_tokens: [B, L, 1024]
-
-#     Output:
-#         fused_tokens: [B, L, 704]
-
-#     L includes:
-#         1 class token + N patch tokens
-#     """
-
-#     def __init__(
-#         self,
-#         student_dim=384,
-#         teacher_dim=1024,
-#         fusion_dim=704,
-#         num_heads=11,
-#         ffn_ratio=4.0,
-#         dropout=0.0,
-#     ):
-#         super().__init__()
-
-#         if fusion_dim % num_heads != 0:
-#             raise ValueError(
-#                 f"fusion_dim={fusion_dim} must be divisible by "
-#                 f"num_heads={num_heads}"
-#             )
-
-#         # Student → Query embedding
-#         self.student_query_projection = nn.Linear(
-#             student_dim,
-#             fusion_dim,
-#             bias=True,
-#         )
-
-#         # Teacher → Key embedding
-#         self.teacher_key_projection = nn.Linear(
-#             teacher_dim,
-#             fusion_dim,
-#             bias=True,
-#         )
-
-#         # Teacher → Value embedding
-#         self.teacher_value_projection = nn.Linear(
-#             teacher_dim,
-#             fusion_dim,
-#             bias=True,
-#         )
-
-#         self.cross_attention = nn.MultiheadAttention(
-#             embed_dim=fusion_dim,
-#             num_heads=num_heads,
-#             dropout=dropout,
-#             batch_first=True,
-#         )
-
-#         self.norm1 = nn.LayerNorm(fusion_dim)
-#         self.norm2 = nn.LayerNorm(fusion_dim)
-
-#         hidden_dim = int(fusion_dim * ffn_ratio)
-
-#         self.ffn = nn.Sequential(
-#             nn.Linear(fusion_dim, hidden_dim),
-#             nn.GELU(),
-#             nn.Dropout(dropout),
-#             nn.Linear(hidden_dim, fusion_dim),
-#             nn.Dropout(dropout),
-#         )
-
-#     def forward(
-#         self,
-#         student_tokens,
-#         teacher_tokens,
-#     ):
-#         """
-#         student_tokens: [B, L, 384]
-#         teacher_tokens: [B, L, 1024]
-
-#         returns:
-#             fused_tokens: [B, L, 704]
-#         """
-
-#         if student_tokens.ndim != 3:
-#             raise ValueError(
-#                 f"Student tokens must be [B,L,C], "
-#                 f"got {student_tokens.shape}"
-#             )
-
-#         if teacher_tokens.ndim != 3:
-#             raise ValueError(
-#                 f"Teacher tokens must be [B,L,C], "
-#                 f"got {teacher_tokens.shape}"
-#             )
-
-#         if student_tokens.shape[:2] != teacher_tokens.shape[:2]:
-#             raise ValueError(
-#                 "Student and teacher must have matching batch and "
-#                 "token dimensions. "
-#                 f"Student: {student_tokens.shape}, "
-#                 f"teacher: {teacher_tokens.shape}"
-#             )
-
-#         query = self.student_query_projection(student_tokens)
-#         key = self.teacher_key_projection(teacher_tokens)
-#         value = self.teacher_value_projection(teacher_tokens)
-
-#         attention_output, _ = self.cross_attention(
-#             query=query,
-#             key=key,
-#             value=value,
-#             need_weights=False,
-#         )
-
-#         # Residual connection from projected student query
-#         fused_tokens = self.norm1(
-#             query + attention_output
-#         )
-
-#         # Transformer FFN
-#         fused_tokens = self.norm2(
-#             fused_tokens + self.ffn(fused_tokens)
-#         )
-
-#         return fused_tokens
 
 
+# Cross-attention transfers teacher information; self-attention refines fused tokens.
 class CrossAttentionFusionBlock(nn.Module):
     """
     1. Student tokens attend to teacher tokens.
@@ -415,14 +257,12 @@ class CrossAttentionFusionBlock(nn.Module):
                 f"num_heads={num_heads}"
             )
 
-        # Student tokens become queries.
         self.student_query_projection = nn.Linear(
             student_dim,
             fusion_dim,
             bias=True,
         )
 
-        # Teacher tokens become keys and values.
         self.teacher_key_projection = nn.Linear(
             teacher_dim,
             fusion_dim,
@@ -435,7 +275,6 @@ class CrossAttentionFusionBlock(nn.Module):
             bias=True,
         )
 
-        # Student-to-teacher cross-attention.
         self.cross_attention = nn.MultiheadAttention(
             embed_dim=fusion_dim,
             num_heads=num_heads,
@@ -443,7 +282,6 @@ class CrossAttentionFusionBlock(nn.Module):
             batch_first=True,
         )
 
-        # Self-attention among the fused tokens.
         self.self_attention = nn.MultiheadAttention(
             embed_dim=fusion_dim,
             num_heads=num_heads,
@@ -501,9 +339,6 @@ class CrossAttentionFusionBlock(nn.Module):
         key = self.teacher_key_projection(teacher_tokens)
         value = self.teacher_value_projection(teacher_tokens)
 
-        # =========================================================
-        # 1. Cross-attention: student queries attend to teacher K/V
-        # =========================================================
         cross_output, _ = self.cross_attention(
             query=query,
             key=key,
@@ -515,9 +350,6 @@ class CrossAttentionFusionBlock(nn.Module):
             query + cross_output
         )
 
-        # =========================================================
-        # 2. Self-attention among all fused tokens
-        # =========================================================
         self_output, _ = self.self_attention(
             query=fused_tokens,
             key=fused_tokens,
@@ -529,9 +361,6 @@ class CrossAttentionFusionBlock(nn.Module):
             fused_tokens + self_output
         )
 
-        # =========================================================
-        # 3. Per-token FFN
-        # =========================================================
         fused_tokens = self.norm_ffn(
             fused_tokens + self.ffn(fused_tokens)
         )
@@ -604,12 +433,6 @@ def load_depth_anything_branch(encoder_name, mono_model_configs, ROOT):
     del model, decoder_model, state
     return mono_encoder, mono_decoder, feat_decoder
 
-class SameConv2d(nn.Conv2d):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def forward(self, x):
-        return same_padding_conv(x, self.weight, self.bias, self.stride)
     
 class UpsampleBlock(nn.Module):
     def __init__(self, c0, c1):
@@ -630,7 +453,6 @@ class UpsampleBlock(nn.Module):
     def forward(self, x, skip):
         x = self.up(x)
 
-        # --- spatial alignment (CRITICAL) ---
         if x.shape[-2:] != skip.shape[-2:]:
             x = F.interpolate(
                 x,
@@ -696,12 +518,9 @@ def make_warp_coef(scale, device):
     center = (scale - 1) / 2
     index = torch.arange(scale, device=device) - center
     coef_y, coef_x = torch.meshgrid(index, index)
-    # coef_y → repeats index across rows
-    #coef_x → repeats index across columns (x coordinates):
-    coef_x = coef_x.reshape(1, -1, 1, 1) # [1,scale*scale,1,1]
+    coef_x = coef_x.reshape(1, -1, 1, 1)
     coef_y = coef_y.reshape(1, -1, 1, 1)
     return coef_x, coef_y
-
 
 
 class SameConv2d(nn.Conv2d):
@@ -806,7 +625,6 @@ class RefinementNet_Disp_Next(nn.Module):
         x = self.convn(x)
         return hpy + x
     
-#========================== Mono disp prediction Modules =====================================================    
 class ResidualBlock(nn.Module):
     def __init__(self, channels):
         super().__init__()
@@ -835,20 +653,18 @@ class Mono_Dip_predict(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-        # Add 3 residual blocks (you can increase this)
         self.res_blocks = nn.Sequential(
             ResidualBlock(16),
             ResidualBlock(16),
             ResidualBlock(16)
 
             
-
         )
 
-        self.output_conv = nn.Conv2d(16, 1, kernel_size=3, padding=1)  # keeps output shape
+        self.output_conv = nn.Conv2d(16, 1, kernel_size=3, padding=1)
 
     def forward(self, img_feats, stereo_disp):
-        x = torch.cat([img_feats, stereo_disp], dim=1)  # (B, C+1, H, W)
+        x = torch.cat([img_feats, stereo_disp], dim=1)
 
         x = self.input_conv(x)
         x = self.res_blocks(x)
@@ -856,16 +672,14 @@ class Mono_Dip_predict(nn.Module):
         return x
     
 
-    
 class MultiScaleFusion(nn.Module):
     def __init__(self, in_channels_list):
         super().__init__()
         self.blocks = nn.ModuleList()
 
-        # progressive fusion convs
-        c_prev = in_channels_list[0]  # start with lf[-1]
+        c_prev = in_channels_list[0]
         for c_skip in in_channels_list[1:]:
-            c_in = c_prev + c_skip   # after concat
+            c_in = c_prev + c_skip
             block = nn.Sequential(
                 nn.Conv2d(c_in, c_in, 3, padding=1),
                 nn.ReLU(inplace=True),
@@ -873,7 +687,7 @@ class MultiScaleFusion(nn.Module):
                 nn.ReLU(inplace=True),
             )
             self.blocks.append(block)
-            c_prev = c_in  # update running channel count
+            c_prev = c_in
 
         self.total_channels = c_prev
 
@@ -885,23 +699,14 @@ class MultiScaleFusion(nn.Module):
         )
 
     def forward(self, feats, disp_size=None):
-        # feats = [lf[-1], lf[-2], lf[-3], lf[-4]]
-        x = feats[0]  # start with coarsest
+        x = feats[0]
 
         for i, f in enumerate(feats[1:]):
-            # upsample x to match f
             x = F.interpolate(x, size=f.shape[-2:], mode="bilinear", align_corners=False)
-            # concat with skip
             x = torch.cat([x, f], dim=1)
-            # conv on concatenated channels
-           # x = self.blocks[i](x)
 
-        # final conv + upsample to disparity res
-       # x = self.final_conv(x)
-#         x = F.interpolate(x, size=disp_size, mode="bilinear", align_corners=False)
         return x
     
-#========================== RT Monster Modules =====================================================
 class DispFullResRefine(nn.Module):
     def __init__(self, in_ch=1, feat_ch=32, num_blocks=3):
         super().__init__()
@@ -925,24 +730,19 @@ class DispFullResRefine(nn.Module):
 
         return disp + residual
 def get_cur_disp_range_samples(cur_disp, ndisp, disp_interval_pixel, shape):
-    #shape, (B, H, W)
-    #cur_disp: (B, H, W)
-    #return disp_range_samples: (B, D, H, W)
 
     w = float(cur_disp.shape[2])
-    # cur_disp_min = (cur_disp - ndisp / 2 * disp_interval_pixel)  # (B, H, W)
-    # cur_disp_max = (cur_disp + ndisp / 2 * disp_interval_pixel)
-    cur_disp_min = (cur_disp - ndisp / 2 * disp_interval_pixel).clamp(min=0.0)   #(B, H, W)
+    cur_disp_min = (cur_disp - ndisp / 2 * disp_interval_pixel).clamp(min=0.0)
     cur_disp_max = (cur_disp_min + (ndisp - 1) * disp_interval_pixel).clamp(max=w)
 
     assert cur_disp.shape == torch.Size(shape), "cur_disp:{}, input shape:{}".format(cur_disp.shape, shape)
-    new_interval = (cur_disp_max - cur_disp_min) / (ndisp - 1)  # (B, H, W)
+    new_interval = (cur_disp_max - cur_disp_min) / (ndisp - 1)
 
     disp_range_samples = cur_disp_min.unsqueeze(1) + (torch.arange(0, ndisp, device=cur_disp.device,
                                                                     dtype=cur_disp.dtype,
                                                                     requires_grad=False).reshape(1, -1, 1,
                                                                                                 1) * new_interval.unsqueeze(1))
-    return disp_range_samples  #[B, D, H, W]
+    return disp_range_samples
             
 def compute_scale_shift(monocular_depth, gt_depth, mask=None):
     """
@@ -966,34 +766,17 @@ def compute_scale_shift(monocular_depth, gt_depth, mask=None):
     if mask is None:
         mask = (gt_depth > 0) & (monocular_depth > 1e-2) & (monocular_depth > threshold_10_percent)
         
-    # ==========================================================
-    # SAFETY CHECK 1: not enough valid pixels
-    # ==========================================================
-    monocular_depth_flat = monocular_depth[mask]
-    gt_depth_flat = gt_depth[mask]
         
-#     if monocular_depth_flat.numel() < 10:
-#         print(
-#             "[WARNING compute_scale_shift] Too few valid pixels:",
-#             monocular_depth_flat.numel()
-#         )
-#         return 1.0, 0.0    
-        
-    
     monocular_depth_flat = monocular_depth[mask]
     gt_depth_flat = gt_depth[mask]
     
     X = torch.stack([monocular_depth_flat, torch.ones_like(monocular_depth_flat)], dim=1)
     y = gt_depth_flat
     
-    # 使用最小二乘法计算 [scale, shift]
     A = torch.matmul(X.t(), X) + 1e-6 * torch.eye(2, device=X.device)
     b = torch.matmul(X.t(), y)
     
     
-    # ==========================================================
-    # SAFETY CHECK 2: NaN / Inf
-    # ==========================================================
     if not torch.isfinite(A).all() or not torch.isfinite(b).all():
         print(
             "[WARNING compute_scale_shift] NaN/Inf detected.",
@@ -1001,12 +784,7 @@ def compute_scale_shift(monocular_depth, gt_depth, mask=None):
         )
         return 1.0, 0.0
     
-   # params = torch.linalg.solve(A, b)
     
-    
-    # ==========================================================
-    # SAFETY CHECK 3: singular matrix
-    # ==========================================================
     try:
         params = torch.linalg.solve(A, b)
 
@@ -1026,9 +804,6 @@ def compute_scale_shift(monocular_depth, gt_depth, mask=None):
     scale, shift = params[0].item(), params[1].item()
     
     
-    # ==========================================================
-    # SAFETY CHECK 4: result itself is invalid
-    # ==========================================================
     if not (
         torch.isfinite(params).all()
     ):
@@ -1039,7 +814,6 @@ def compute_scale_shift(monocular_depth, gt_depth, mask=None):
     return scale, shift
 
 
-    
 class hourglass_4x(nn.Module):
     def __init__(self, in_channels):
         super(hourglass_4x, self).__init__()
@@ -1078,9 +852,6 @@ class hourglass_16x(nn.Module):
         return conv    
     
 
-
-    
-    
 class Feat_transfer_cnet(nn.Module):
     def __init__(self, output_dim):
         super().__init__()
@@ -1136,8 +907,6 @@ class Feat_transfer(nn.Module):
         self.res_4x = nn.Conv2d(dim_list[0], 48, kernel_size=1, padding=0, stride=1)
 
 
-
-
     def forward(self, features):
         features_mono_list = []
 
@@ -1151,8 +920,6 @@ class Feat_transfer(nn.Module):
         features_mono_list.append(feat_16x)
 
         return features_mono_list
-
-
 
 
 class UncertaintyPredictor(nn.Module):
@@ -1190,7 +957,6 @@ class DispPixelMLP(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        # per-pixel MLP
         self.mlp = nn.Sequential(
             nn.Conv2d(hidden_ch, hidden_ch, 1),
             nn.ReLU(inplace=True),
@@ -1222,18 +988,16 @@ class DispPixelMLP(nn.Module):
         Delta_O = self.mlp(x)
 
 
-
         return Delta_O    
     
     
-    
+# Stereo model with Stage 2 teacher-assistant distillation.
 class URS(nn.Module):
     def __init__(self, args):
-#===================== Monster ==============================================
         super().__init__()
         self.args = args
-        self.ndisps = [15, 13]  # args.ndisps
-        self.disp_interval_pixel = [2, 1]   # args.disp_inteval_pixel
+        self.ndisps = [15, 13]
+        self.disp_interval_pixel = [2, 1]
         context_dims = args.hidden_dims[::-1]
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
@@ -1255,7 +1019,6 @@ class URS(nn.Module):
             'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
         }
         dim_list_ = mono_model_configs[self.args.encoder_s]['features']
-       # dim_list_ = 256   # because you project ViT-S features 64 -> 256 before Feat_transfer
         dim_list = []
         dim_list.append(dim_list_)
 
@@ -1263,7 +1026,6 @@ class URS(nn.Module):
 
         self.context_zqr_convs = nn.ModuleList([nn.Conv2d(context_dims[i], context_dims[i]*3, 3, padding=3//2) for i in range(self.args.n_gru_layers)])
 
-        
         
         self.feat_transfer = Feat_transfer(dim_list)
        
@@ -1322,38 +1084,14 @@ class URS(nn.Module):
         self.cost_agg = nn.ModuleList([hourglass_16x(8), hourglass_8x(8), hourglass_4x(8)])
         self.classifier = nn.Conv3d(8, 1, 3, 1, 1, bias=False)
 
-#         depth_anything = DepthAnythingV2(**mono_model_configs[args.encoder_s])
-#         depth_anything_decoder = DepthAnythingV2_decoder(**mono_model_configs[args.encoder_s])
 
-#         from pathlib import Path
-
-#         ROOT = Path(__file__).resolve().parents[2]
-#         dpt_ckpt = ROOT / "pretrained" / f"depth_anything_v2_{args.encoder_s}.pth"
-
-#         state_dict_dpt = torch.load(str(dpt_ckpt), map_location="cpu")
-
-      
-
-
-
-        # frozen ViT-L teacher
+        # Load the pretrained teacher and student branches.
         self.teacher_encoder, self.teacher_mono_decoder, self.teacher_feat_decoder = \
             load_depth_anything_branch(args.teacher_encoder, mono_model_configs, ROOT)
 
 
-
-        # trainable ViT-S student
         self.mono_encoder, self.mono_decoder, self.feat_decoder = \
             load_depth_anything_branch(args.student_encoder, mono_model_configs, ROOT)
-
-
-
-       # del depth_anything, state_dict_dpt, depth_anything_decoder
-        
-        
-
-
-
 
 
         self.update_block_mix_stereo = BasicMultiUpdateBlock_mix2(self.args, hidden_dims=args.hidden_dims, ndisps=self.ndisps)
@@ -1371,10 +1109,9 @@ class URS(nn.Module):
 
 
         self.mono_disparity_predictor= Mono_Dip_predict(
-            img_feat_channels=24,   # 24 features
-            disp_channels=1 # from flaw_stereo
+            img_feat_channels=24,
+            disp_channels=1
         )
-
 
 
         self.uncertainty_predictor8 = UncertaintyPredictor(
@@ -1391,9 +1128,7 @@ class URS(nn.Module):
         self.disp_pixel_mlp_4x = DispPixelMLP(feat_ch=48)
         
 
-        # ============================================================
-        # Teacher Assistant encoder
-        # ============================================================
+        # Reuse the Stage 1 teacher assistant as a frozen distillation target.
         self.intermediate_encoder = IntermediateCrossAttentionEncoder(
             num_layers=4,
             student_dim=384,
@@ -1404,9 +1139,6 @@ class URS(nn.Module):
             dropout=0.0,
         )
 
-        # ============================================================
-        # Teacher Assistant decoders
-        # ============================================================
         self.intermediate_mono_decoder = IntermediateDPTHead(
             in_channels=704,
             features=64,
@@ -1423,9 +1155,6 @@ class URS(nn.Module):
             use_clstoken=True,
         )
 
-        # ============================================================
-        # Student projection: 384 -> 704
-        # ============================================================
         self.student_to_ta_projection = StudentToTAProjection(
             num_layers=4,
             student_dim=384,
@@ -1433,33 +1162,24 @@ class URS(nn.Module):
         )
         
 
-        #self.student_to_ta_projection.requires_grad_(True)
+        # Stage 2: freeze teacher/assistant; train the selected student modules.
 
-        # ============================================================
-        # Stage 2 freezing configuration
-        # Must come AFTER all modules above are created
-        # ============================================================
-
-        # Original ViT-L teacher stays frozen.
         self.teacher_encoder.requires_grad_(False)
         self.teacher_mono_decoder.requires_grad_(False)
         self.teacher_feat_decoder.requires_grad_(False)
 
-        # Freeze trained Teacher Assistant.
         self.intermediate_encoder.requires_grad_(False)
         self.intermediate_mono_decoder.requires_grad_(False)
         self.intermediate_feat_decoder.requires_grad_(False)
 
-        # Train ViT-S student backbone.
         self.mono_encoder.requires_grad_(True)
 
-        # Train student-to-TA projection.
         self.student_to_ta_projection.requires_grad_(True)
 
-        # student decoders 
         self.mono_decoder.requires_grad_(False)
         self.feat_decoder.requires_grad_(True)
 
+    # Extract stereo, monocular, and feature-distillation outputs.
     def infer_intermediate_branch(
         self,
         image1,
@@ -1467,35 +1187,10 @@ class URS(nn.Module):
     ):
         batch_size, _, height_ori, width_ori = image1.shape
 
-        # ============================================================
-        # Combine left and right images
-        # ============================================================
-        # image: [2B, 3, H, W]
         image = torch.cat(
             [image1, image2],
             dim=0,
         )
-
-#         # Your original square resize
-#         image_half = F.interpolate(
-#             image,
-#             size=(width_ori // 2, width_ori // 2),
-#             mode="bilinear",
-#             align_corners=True,
-#         )
-
-#         image_half = (
-#             image_half / 255.0
-#         ).contiguous()
-
-#         # Resize so dimensions align with ViT patch size 14
-#         resized_image = F.interpolate(
-#             image_half,
-#             scale_factor=14 / 16,
-#             mode="bilinear",
-#             align_corners=True,
-#         )
-
 
 
         image_half = F.interpolate(
@@ -1509,7 +1204,6 @@ class URS(nn.Module):
         image_half / 255.0
         ).contiguous()
 
-        # SAME preprocessing as your original working model
         image_half = self.normalize(image_half)
 
         resized_image = F.interpolate(
@@ -1521,16 +1215,6 @@ class URS(nn.Module):
         patch_h = resized_image.shape[-2] // 14
         patch_w = resized_image.shape[-1] // 14
 
-        # ============================================================
-        # 1. Trainable ViT-S student backbone
-        # ============================================================
-        #
-        # Each element:
-        # (
-        #     patch_tokens: [2B, N, 384],
-        #     cls_token:    [2B, 384]
-        # )
-        #
         student_features = self.mono_encoder.get_intermediate_layers(
             resized_image,
             self.intermediate_layer_idx[
@@ -1539,16 +1223,6 @@ class URS(nn.Module):
             return_class_token=True,
         )
 
-        # ============================================================
-        # 2. Frozen ViT-L teacher backbone
-        # ============================================================
-        #
-        # Each element:
-        # (
-        #     patch_tokens: [2B, N, 1024],
-        #     cls_token:    [2B, 1024]
-        # )
-        #
         with torch.no_grad():
             teacher_features = (
                 self.teacher_encoder.get_intermediate_layers(
@@ -1560,13 +1234,7 @@ class URS(nn.Module):
                 )
             )
 
-        # ============================================================
-        # 3. Detach student features for frozen TA target path
-        # ============================================================
-        #
-        # This prevents the TA decoder/stereo path from sending
-        # gradients through the TA into the student backbone.
-        #
+        # Detach student tokens to prevent gradients through the TA target branch.
         student_features_detached = [
             (
                 patch_tokens.detach(),
@@ -1575,16 +1243,7 @@ class URS(nn.Module):
             for patch_tokens, cls_token in student_features
         ]
 
-        # ============================================================
-        # 4. Frozen Teacher Assistant
-        # ============================================================
-        #
-        # TA output:
-        # (
-        #     fused_patch_tokens: [2B, N, 704],
-        #     fused_cls_token:    [2B, 704]
-        # )
-        #
+        # Compute teacher-assistant features without gradients.
         with torch.no_grad():
             ta_features = self.intermediate_encoder(
                 student_features_detached,
@@ -1604,33 +1263,19 @@ class URS(nn.Module):
         )
 
 
-
-
-        # ============================================================
-        # 5. Trainable student projection for KD
-        # ============================================================
-        #
-        # Student:
-        #     [2B, N, 384]
-        #
-        # Projected student:
-        #     [2B, N, 704]
-        #
+        # Learn the projection from student tokens to TA feature dimensions.
         projected_student_features = (
             self.student_to_ta_projection(
                 student_features
             )
         )
 
-        # Frozen TA patch-token targets
+        # Detach TA patch tokens used as feature-distillation targets.
         ta_patch_features = [
             patch_tokens.detach()
             for patch_tokens, cls_token in ta_features
         ]
 
-        # ============================================================
-        # 6. Process TA depth output
-        # ============================================================
         depth_mono = F.relu(
             depth_mono
         )
@@ -1645,9 +1290,6 @@ class URS(nn.Module):
             align_corners=False,
         )
 
-        # ============================================================
-        # 7. student decoder features
-        # ============================================================
         (
             features_4x,
             features_8x,
@@ -1655,9 +1297,6 @@ class URS(nn.Module):
             features_32x,
         ) = decoder_features
 
-        # ============================================================
-        # 8. Split and resize left-image features
-        # ============================================================
         features_left = [
             F.interpolate(
                 features_4x[:batch_size],
@@ -1688,9 +1327,6 @@ class URS(nn.Module):
             ),
         ]
 
-        # ============================================================
-        # 9. Split and resize right-image features
-        # ============================================================
         features_right = [
             F.interpolate(
                 features_4x[batch_size:],
@@ -1721,9 +1357,6 @@ class URS(nn.Module):
             ),
         ]
 
-        # ============================================================
-        # 10. Split TA patch tokens into left and right
-        # ============================================================
         intermediate_patch_features = [
             patch_tokens
             for patch_tokens, cls_token in ta_features
@@ -1738,9 +1371,6 @@ class URS(nn.Module):
             feature[batch_size:]
             for feature in intermediate_patch_features
         ]
-        # ============================================================
-        # Split student features into left and right
-        # ============================================================
         student_features_left = [
             feature[:batch_size]
             for feature in projected_student_features
@@ -1751,9 +1381,6 @@ class URS(nn.Module):
             for feature in projected_student_features
         ]
 
-        # ============================================================
-        # Split TA targets into left and right
-        # ============================================================
         ta_features_left = [
             feature[:batch_size]
             for feature in ta_patch_features
@@ -1763,24 +1390,18 @@ class URS(nn.Module):
             feature[batch_size:]
             for feature in ta_patch_features
         ]
-        # ============================================================
-        # 11. Split depth into left and right
-        # ============================================================
         depth_left = depth_mono[:batch_size]
         depth_right = depth_mono[batch_size:]
 
-        # ============================================================
-        # 12. Return stereo features and KD features
-        # ============================================================
         return (
             depth_left,
             depth_right,
-            features_left,# student features (used for stereo mathcing)
-            features_right,# student features (used for stereo mathcing)
+            features_left,
+            features_right,
             intermediate_features_left,
             intermediate_features_right,
-            student_features_left, # student to ta features for KD loss
-            student_features_right,# student to ta features for KD loss
+            student_features_left,
+            student_features_right,
             ta_features_left,
             ta_features_right,
 
@@ -1794,25 +1415,9 @@ class URS(nn.Module):
             if isinstance(m, nn.SyncBatchNorm):
                 m.eval()
 
+    # Convex disparity upsampling from the recurrent update features.
     def upsample_disp(self, disp, mask_feat_4, stem_2x):
 
-        # with autocast(enabled=self.args.mixed_precision):
-        #stem_2x:
-            #some convs2d on left image
-        #mask_feat_4:
-            #hidden layer of GRU with a conv2d and relu
-        #spx_2_gru:
-            # gets mask_feat_4 and use transpose conv2d on it with kernel size 4 and stride 2 and padding 1
-            # concat with stem_2x and then apply a normal conv 2d with padding
-        #spx_gru:
-            #Makes the concat  2 times bigger with conv trans
-        #softmax  
-            #Apply a softmax on channel dimention of concat mask_feat_4, stem_2x that is 4 times bigger
-        #context_upsample :
-            #a learnable nearest neighbor interpolation
-            # after getting the weights we add 9 channels to the disp for each pixel in disp we put the 3x3 neighbor
-            # pixels values and then multiply by spx_pred and sum over channels to choose which of the neighbor pixels
-            # to use for interpolation
         xspx = self.spx_2_gru(mask_feat_4, stem_2x)
         spx_pred = self.spx_gru(xspx)
         spx_pred = F.softmax(spx_pred, 1)
@@ -1821,12 +1426,10 @@ class URS(nn.Module):
         return up_disp
     def upsample_disp_2x_to_full(self, disp, mask_feat, stem, i):
 
-        # predict weights
         xspx = self.spx_gru_2x_new[i](mask_feat, stem)
         spx_pred = self.spx_gru_list_new[i](xspx)
         spx_pred = F.softmax(spx_pred, dim=1)
 
-        # upsample disparity
         up_disp = context_upsample_2x(disp * 2., spx_pred).unsqueeze(1)
 
         return up_disp
@@ -1834,14 +1437,14 @@ class URS(nn.Module):
     def upsample_disp_x2(self, disp, mask_feat, stem, i):
 
 
-        # with autocast(enabled=self.args.mixed_precision):
         xspx = self.spx_gru_2x[i](mask_feat, stem)
         spx_pred = self.spx_gru_list[i](xspx)
         spx_pred = F.softmax(spx_pred, 1)
         up_disp = context_upsample_2x(disp*2., spx_pred).unsqueeze(1)
 
-        return up_disp  #[B, 1, H, W]
+        return up_disp
 
+    # Coarse-to-fine stereo forward pass.
     def forward(self, image1, image2, iters=4,  test_mode=False):
         """ Estimate disparity between pair of frames """
         
@@ -1865,31 +1468,20 @@ class URS(nn.Module):
                 )
 
             
-
-
         size = (image1.shape[-2], image1.shape[-1])
         disp_mono_4x = F.interpolate(depth_mono, size=tuple(x // 4 for x in size), mode='bilinear', align_corners=False)
         disp_mono_8x = F.interpolate(depth_mono, size=tuple(x // 8 for x in size), mode='bilinear', align_corners=False)
         disp_mono_16x = F.interpolate(depth_mono, size=tuple(x // 16 for x in size), mode='bilinear', align_corners=False)
         disp_mono_list = [disp_mono_16x, disp_mono_8x, disp_mono_4x]
         
-#         # project 64 -> 256
-#         features_mono_left = self.student_to_teacher_projection(features_mono_left)
-#         features_mono_right = self.student_to_teacher_projection(features_mono_right)
-        #======= features based on transformer backbone =========
-        features_left = self.feat_transfer(features_mono_left)  # 4x, 8x, 16x, 32x
+        features_left = self.feat_transfer(features_mono_left)
         features_right = self.feat_transfer(features_mono_right)
         
         
         feat_left_4 = features_left[0]
         feat_left_8 = features_left[1]
-        feat_left_16 = features_left[2]
         
-        feat_right_4 = features_right[0]
-        feat_right_8 = features_right[1]
-        feat_right_16 = features_right[2]
         
-
         image = torch.cat([image1,image2], 0)
         stem_2x = self.stem_2(image)
         stem_4x = self.stem_4(stem_2x)
@@ -1904,10 +1496,9 @@ class URS(nn.Module):
         stem_x_list = [stem_16x, stem_8x, stem_4x, stem_2x]
         stem_y_list = [stem_16y, stem_8y, stem_4y, stem_2y]
         if not test_mode:
-            iters_list = [iters//4, iters//4, iters//2]   # 1 1 2
+            iters_list = [iters//4, iters//4, iters//2]
         else:
-            iters_list = [1,1,2]  # 1 1 2
-
+            iters_list = [1,1,2]
 
 
         cnet_list = self.feat_transfer_cnet(features_left, stem_x_list)
@@ -1918,35 +1509,14 @@ class URS(nn.Module):
         inp_list = [list(conv(i).split(split_size=conv.out_channels//3, dim=1)) for i,conv in zip(inp_list, self.context_zqr_convs)]
         net_list_mono = [x.clone() for x in net_list]
         
-        #========= Lists ========
         disp_preds = []
                
                 
-        pred_dxy16_list = []
-        pred_dxy8_list = []
-
-        predicted_mono_disp = [None, None, None]  # [16x, 8x, 4x]
-        flaw_mono_predicted_list=[None, None, None]  # [16x, 8x, 4x]
-        h_16_to_8_list=[]
-        hyp_2_list = []
-        hyp_full_list = []
-
-        predicted_mono_disp_i_2_list=[]
-        predicted_uncertainty8_list = []  # 8x
-        predicted_uncertainty16_list = []  # 4x
+        predicted_uncertainty8_list = []
         predicted_uncertainty4_list=[]
-        #======================
         
          
-
-
-
-
-
-
-
-
-        # Coarse-to-fine: 1/16->1/8->1/4
+        # Disparity refinement proceeds from 1/16 to 1/8 to 1/4 resolution.
         for i in range(3):
 
             feat_left = torch.cat((features_left[-1-i], stem_x_list[i]), 1)
@@ -1956,34 +1526,32 @@ class URS(nn.Module):
             match_right = self.desc(self.conv_list[i](feat_right))
 
 
-            if i==0:  # 1/16 stage: build full cost volume
+            # Initialize disparity using the coarse full cost volume.
+            if i==0:
                 disp_range_samples = None
-                gwc_volume = build_gwc_volume(match_left, match_right, self.args.max_disp//16, 8) #[B, 8, D/16, H, W]
+                gwc_volume = build_gwc_volume(match_left, match_right, self.args.max_disp//16, 8)
                 gwc_volume = self.corr_stem(gwc_volume)
                 gwc_volume = self.corr_feature_att_list[i](gwc_volume, feat_left)
                 geo_encoding_volume = self.cost_agg[i](gwc_volume)  
 
                 prob = F.softmax(self.classifier(geo_encoding_volume).squeeze(1), dim=1)
-                #======= init disp16 from disparity_regression ==========
                 init_disp = disparity_regression(prob, self.args.max_disp//16)
-                #======= init disp16 from HIT ==========
-                #init_disp=d16
                 cur_disp = init_disp
                 del prob
 
-            else:  # 1/8、1/4 stage: build local cost volume
+            # Refine using shifted local cost volumes at the finer scales.
+            else:
                 
-                if i==1:#8x
+                if i==1:
                     feat_left_i=feat_left_8
                     
-                    #===== uncertainity  score =========
 
                     predicted_uncertainty_8 = self.uncertainty_predictor8(feat_left_8, disp_next)
 
                     predicted_uncertainty8_list.append(predicted_uncertainty_8)
                       
-                    Delta_O = self.disp_pixel_mlp_8x(feat_left_i, disp_next)  # [B,1,H,W]
-                    Delta_O = predicted_uncertainty_8 * Delta_O # [B,1,H,W]
+                    Delta_O = self.disp_pixel_mlp_8x(feat_left_i, disp_next)
+                    Delta_O = predicted_uncertainty_8 * Delta_O
                     disp_center_8x = disp_next + Delta_O
                     disp_center = disp_next + Delta_O
                     disp_range_samples = get_cur_disp_range_samples(cur_disp=disp_center.squeeze(1),
@@ -1993,20 +1561,17 @@ class URS(nn.Module):
 
                     gwc_volume = build_gwc_volume_selective(match_left, match_right, disp_range_samples, self.ndisps[i-1], 8)  
                     
-                elif i==2:#4x
+                elif i==2:
                     feat_left_i=feat_left_4
-                    #===== uncertainity  score  =========
 
                     
-
                     predicted_uncertainty_4 = self.uncertainty_predictor4(feat_left_4, disp_next)
 
                     predicted_uncertainty4_list.append(predicted_uncertainty_4)
               
                     
-
-                    Delta_O = self.disp_pixel_mlp_4x(feat_left_i, disp_next)  # [B,1,H,W]
-                    Delta_O = predicted_uncertainty_4 * Delta_O # [B,1,H,W]
+                    Delta_O = self.disp_pixel_mlp_4x(feat_left_i, disp_next)
+                    Delta_O = predicted_uncertainty_4 * Delta_O
                     disp_center_4x = disp_next + Delta_O
 
                     disp_center = disp_next + Delta_O
@@ -2017,9 +1582,6 @@ class URS(nn.Module):
 
                     gwc_volume = build_gwc_volume_selective(match_left, match_right, disp_range_samples, self.ndisps[i-1], 8)
                     
-
-               
-
 
                 gwc_volume = self.corr_stem(gwc_volume)
                 gwc_volume = self.corr_feature_att_list[i](gwc_volume, feat_left)
@@ -2037,28 +1599,26 @@ class URS(nn.Module):
             for itr in range(iters_list[i]):
                 disp = disp.detach()
 
-                # lookup
                 if i==0:
                     geo_feat = geo_fn(disp, coords)
                 else:
                     geo_feat = geo_fn(disp, coords, self.ndisps[i-1])
 
-                # scale and shift depth for multi-scale depth fusion
                 bs, _, _, _ = disp.shape
                 for b in range(bs):
                     with torch.autocast(device_type='cuda', dtype=torch.float32): 
                         scale, shift = compute_scale_shift(disp_mono_list[i][b].clone().squeeze(1).to(torch.float32), disp[b].clone().squeeze(1).to(torch.float32))
                     disp_mono_list[i][b] = scale * disp_mono_list[i][b] + shift
 
-                if i==2:  # 1/4 stage
-                    if itr < int(iters_list[2]-1):  #iters_list[0]
+                if i==2:
+                    if itr < int(iters_list[2]-1):
                         net_list, mask_feat, delta_disp = self.update_block_list[i](net_list, inp_list, geo_feat, disp,iter16=(self.args.n_gru_layers==3 and i>=0), iter08=(self.args.n_gru_layers>=2 and i>=1), iter04=(self.args.n_gru_layers>=1 and i>=2))
                         disp_4=disp+delta_disp
     
 
-
-                    else: # only the last iter of 1/4 resolution conduct dual-branch update
-                        warped_right_mono = disp_warp(feat_right, disp_mono_list[i].clone().to(feat_right.dtype))[0]    #feat_right, feat_left
+                    # Apply mono-stereo mutual refinement in the final 1/4-scale iteration.
+                    else:
+                        warped_right_mono = disp_warp(feat_right, disp_mono_list[i].clone().to(feat_right.dtype))[0]
                         flaw_mono = warped_right_mono - feat_left
 
                         warped_right_stereo = disp_warp(feat_right, disp.clone().to(feat_right.dtype))[0]  
@@ -2072,19 +1632,11 @@ class URS(nn.Module):
                         disp_mono_4x_up = self.upsample_disp(disp_mono_list[i], mask_feat_4_mono, stem_2x)
                         disp_preds.append(disp_mono_4x_up)
 
-                if i==0:  # 1/16、
+                if i==0:
                     net_list, mask_feat, delta_disp = self.update_block_list[i](net_list, inp_list, geo_feat, disp, iter16=(self.args.n_gru_layers==3 and i>=0), iter08=(self.args.n_gru_layers>=2 and i>=1), iter04=(self.args.n_gru_layers>=1 and i>=2)) 
                     
                     
-
-
-                    
-                 
-                    
-
-                    
-                    
-                if i==1:  #1/8 stage
+                if i==1:
                     net_list, mask_feat, delta_disp = self.update_block_list[i](net_list, inp_list, geo_feat, disp, iter16=(self.args.n_gru_layers==3 and i>=0), iter08=(self.args.n_gru_layers>=2 and i>=1), iter04=(self.args.n_gru_layers>=1 and i>=2))
                     disp_8=disp+delta_disp
                     
@@ -2097,22 +1649,13 @@ class URS(nn.Module):
                     disp_up = F.interpolate(disp * (2**(4-i)), size=size, mode='bilinear', align_corners=True)
                     disp_preds.append(disp_up)
                 else:
-                    #=== original method of upsampling =========
                     disp_up = self.upsample_disp(disp, mask_feat, stem_2x)
 
            
-
-
-
-
                     disp_preds.append(disp_up)
 
             disp_next = self.upsample_disp_x2(disp, mask_feat, stem_x_list[i+1], i) if i < 2 else None
 
-
-
-
-        predicted_mono_disp_list=[predicted_mono_disp_i_2_list]#4x
 
         if test_mode:
             return disp_up
@@ -2121,9 +1664,6 @@ class URS(nn.Module):
         disp_center_8x = F.interpolate(disp_center_8x * 8, size=size, mode='bilinear', align_corners=True)
         disp_center_4x = F.interpolate(disp_center_4x * 4, size=size, mode='bilinear', align_corners=True)
         
-
-
-
 
         return (
             init_disp_up,
