@@ -1,0 +1,98 @@
+wandb: {}
+project_name: sceneflow
+
+
+
+teacher_encoder: 'vitl'
+student_encoder: 'vits'
+
+
+
+restore_ckpt_URS3_M10_Million_Scale_zero_shot_stage2_no_cheat_no_ffs: '/scrfs/storage/pouyas/home/3D_model/HMAF/MonSter-plusplus/RT-MonSter++/weights_sf/URS/URS3_M10_Million_Scale_zero_shot_stage2/no_cheat/no_ffs/step_995000.pth'
+
+
+
+
+
+save_path_URS3_M10_Million_Scale_zero_shot_stage2_no_cheat_no_ffs: '/scrfs/storage/pouyas/home/3D_model/HMAF/MonSter-plusplus/RT-MonSter++/weights_sf/URS/URS3_M10_Million_Scale_zero_shot_stage2/no_cheat/no_ffs'
+
+# save_path_URS3_M10_4M_zero_shot: '/scrfs/storage/pouyas/home/3D_model/HMAF/MonSter-plusplus/RT-MonSter++/weights_sf/URS/URS3_M10_4M_zero_shot'
+
+freeze_teacher: True
+freeze_student: False
+
+#lr_student_dpt: 1e-10
+
+lr_student_dpt: 1e-6
+logdir: './checkpoints/sceneflow/'
+encoder: 'vitl'
+encoder_2f2: 'vits'
+encoder_s: 'vits'
+batch_size: 12
+train_datasets: ['Million_scale_no_cheat_no_ffs']
+lr: 2e-4
+wdecay: 1e-5
+total_step: 4000000
+save_frequency: 5000
+val_frequency: 5000
+#save_path: './weights_sf/'
+
+
+image_size: [320, 736]
+train_iters: 4
+valid_iters: 4
+val_dataset: 'kitti'
+corr_implementation: "reg"
+corr_levels: 2
+corr_radius: [2, 2, 4]
+n_downsample: 2
+n_gru_layers: 3
+#hidden_dims: [128,128,128]
+hidden_dims: [32, 64, 96]
+max_disp: 192
+saturation_range: [0.7, 1.3]
+do_flip: False
+spatial_scale: [-0.2, 0.5]
+noyjitter: True
+num_gpu: 4
+seed: 666
+
+#just for build_dataset
+lr_decay: [1000000, 0.25, 1300000, 0.1, 1400000, 0.025]
+lr_decay_type: Lambda
+# lr_hit: 4e-4
+lr_hit_4x: 4e-4 
+lr_hit: 1e-5
+data_type_train: "SceneFlow"
+data_root_train: /scrfs/storage/pouyas/home/3D_model/scene_flow_full/flyingthings3d
+data_list_train: /scrfs/storage/pouyas/home/3D_model/TinyHITNet/lists/sceneflow_train.list
+#data_size_train: [320, 960]
+data_size_train: [320, 736]
+#[960, 320]
+optmizer: Adam
+data_type_val: "SceneFlow"
+data_root_val: /scrfs/storage/pouyas/home/3D_model/scene_flow_full/flyingthings3d
+data_list_val: /scrfs/storage/pouyas/home/3D_model/TinyHITNet/lists/sceneflow_test.list
+data_size_val: [540, 960]
+
+#[540, 960]
+data_augmentation: 1
+num_workers_train: 2 
+num_workers_val: 2 
+num_workers: 2 
+batch_size_val: 4
+batch_size_train: 4
+lr_mono: 1e-4
+HITTI_A: 1.0
+HITTI_B: 1.0
+HITTI_C1: 1.0
+HITTI_C2: 1.5
+robust_loss_a: 0.9
+robust_loss_c: 0.1
+init_loss_k: 1
+#320 736# 320 736
+
+
+
+
+
