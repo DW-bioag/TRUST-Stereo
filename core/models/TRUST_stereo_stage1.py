@@ -913,7 +913,7 @@ class DispPixelMLP(nn.Module):
         return Delta_O
 
 
-class URS(nn.Module):
+class TRUST(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
