@@ -108,9 +108,8 @@ TRUST-Stereo/
 - Python **3.10** (reference development version: **3.10.20**).
 - A compatible **NVIDIA CUDA GPU** for the current zero-shot inference script.
 - PyTorch **2.6.0** and Torchvision **0.21.0**, both using the **CUDA 12.4** build in the reference environment.
-- A matching trained TRUST-Stereo checkpoint and the custom model components described below.
 
-These package versions were **read from the original `new_env` environment**. The commands create a **new** environment and do not require modifying the original research environment.
+
 
 ### 1. Obtain the repository and create an environment
 
@@ -128,8 +127,6 @@ conda activate trust-stereo
 python -m pip install torch==2.6.0 torchvision==0.21.0
 ```
 
-**CUDA note:** This command pins the PyTorch and Torchvision versions, but does not guarantee the exact `+cu124` wheel. Choose CUDA-compatible PyTorch 2.6.0 / Torchvision 0.21.0 builds for your GPU and driver. The reference environment used CUDA 12.4.
-
 ### 3. Install Python dependencies
 
 ```bash
@@ -145,7 +142,6 @@ python -m pip install \
   opt-einsum==3.4.0
 ```
 
-These are reference versions from the inspected environment, **not a guaranteed minimal or independently validated clean-room installation**. Dependencies within the project's modified Depth Anything V2 source must also be present.
 
 #### Additional training dependencies
 
@@ -162,7 +158,6 @@ python -m pip install \
   imageio==2.37.2
 ```
 
-These are intended for **training/data-processing workflows**, not necessarily for single-pair inference. The inspected environment did not have `xformers`, `flash-attn`, or Hugging Face `transformers` installed, so they are not listed as baseline requirements.
 
 ## Model assets and weights
 
@@ -182,14 +177,10 @@ TRUST-Stereo/
 
 The custom `depth_anything_v2.dpt` implementation must expose `DepthAnythingV2`, `DepthAnythingV2_decoder`, `IntermediateDPTHead`, and `IntermediateDPTFeatureHead`. The model currently loads the ViT-S and ViT-L pretrained backbone files during initialization before loading the final Stage 2 checkpoint.
 
-- **TRUST-Stereo pretrained weights:** Public download URL to be added when released. Use a compatible local `.pth` checkpoint meanwhile.
-- **Foundation-model source:** The architecture builds on Depth Anything V2. Its original implementation does **not** by itself provide the custom intermediate modules expected by the current TRUST-Stereo code.
-
-Please check the licensing and distribution terms before publishing any third-party weights or source files.
 
 ## Zero-shot inference
 
-Run the model on **two equal-sized, rectified RGB images**. Ground-truth disparity and a benchmark dataset installation are **not required**.
+Run the model on **two equal-sized, rectified RGB images**.
 
 From the repository root:
 
@@ -203,7 +194,7 @@ python scripts/Zero_shot_test_Demo.py \
   --iters 4
 ```
 
-Replace `--weights` with the path to your trained Stage 2 checkpoint. The demo pads inputs to dimensions divisible by 32, runs inference, and unpads the result so that the saved disparity has the **same height and width as the original images**.
+Replace `--weights` with the path to your trained Stage 2 checkpoint. 
 
 ### Command-line options
 
@@ -244,11 +235,10 @@ disparity = np.load("outputs/lab_demo/disparity.npy")
 print(disparity.shape, disparity.dtype)  # (H, W), float32
 ```
 
-> **Geometry note:** A rectified stereo pair is required for meaningful stereo correspondence. Disparity is measured in image pixels, not meters. Obtaining metric depth or a metric point cloud requires calibrated camera intrinsics and the stereo baseline.
 
 ## Reproducibility and current release notes
 
-The following versions were observed in the original Conda environment:
+The following versions were used in during train/inference:
 
 | Component | Reference version |
 |:--|:--|
@@ -264,12 +254,7 @@ The following versions were observed in the original Conda environment:
 | Hydra (training) | `1.3.2` |
 | SwanLab (training) | `0.7.5` |
 
-**Important compatibility notes for the current public repository:**
 
-1. The demo imports `TRUST` from `core/models/TRUST_Stereo_Stage2.py`, but the public model file still declares `class URS`. The exported class name and the import **must be made consistent** before inference will work. The intended class name is `TRUST`.
-2. The public demo currently defaults to an outdated `URS3_...yaml`. **Explicitly pass `--config config/TRUST_inference.yaml`**, as in the example above.
-3. The custom Depth Anything V2 implementation and prerequisite checkpoints are not yet part of the visible repository release. The demo cannot be run from a fresh clone alone until those assets are supplied.
-4. The CUDA-enabled PyTorch package can report `torch.cuda.is_available() == False` on an HPC login node without GPU allocation. Run inference on a node with an available CUDA GPU.
 
 ## Citation
 
@@ -283,4 +268,4 @@ TRUST-Stereo builds on research in deep stereo matching, recurrent coarse-to-fin
 
 ## License
 
-A software license has not yet been specified in this README package. See the repository's license file, if one is added, before reuse or redistribution.
+A software license has not yet been specified in this README package. 
