@@ -1,269 +1,282 @@
+<div align="center">
+
 # TRUST-Stereo
 
 ### Teacher-Assisted Robust Uncertainty-Guided Search and Transfer for Fast Stereo Matching
 
-**PyTorch implementation · Zero-shot stereo matching · Full-resolution disparity estimation**
+**Fast stereo matching · Zero-shot generalization · Full-resolution disparity prediction**
 
-TRUST-Stereo is a coarse-to-fine stereo matching framework designed for efficient disparity estimation and strong generalization to unseen domains. It combines **Senior–Junior Teacher Assistant (SJTA)** knowledge distillation with an **Uncertainty-Guided Residual Search Module (UGRSM)** to improve feature representations and recover from errors in propagated disparity.
+[Overview](#overview) · [Abstract](#abstract) · [Results](#results) · [Installation](#installation) · [Inference](#zero-shot-inference) · [Citation](#citation)
 
-> **Repository status:** The repository includes a Stage 2 model definition, an inference configuration, and a single-pair inference demo. **To run inference, you also need a compatible TRUST-Stereo checkpoint, the modified Depth Anything V2 implementation used by the model, and the pretrained backbone weights.** See [Required model assets](#required-model-assets) and [Current compatibility notes](#current-compatibility-notes).
+</div>
+
+TRUST-Stereo is a coarse-to-fine stereo matching framework that combines **Senior–Junior Teacher Assistant (SJTA)** knowledge distillation with an **Uncertainty-Guided Residual Search Module (UGRSM)**. It improves stereo feature representations while making local correspondence search more robust to errors propagated from coarser disparity estimates.
+
+The framework uses a lightweight student backbone at inference and predicts a **dense disparity map at the input image resolution** from a pair of rectified RGB images.
 
 ## Abstract
 
-Coarse-to-fine stereo matching provides an efficient approach to dense disparity estimation, but errors in propagated disparity can shift subsequent local search windows away from the correct correspondence. Moreover, transferring the rich representations of large monocular foundation models to lightweight stereo networks remains challenging. We propose **TRUST-Stereo (Teacher-Assisted Robust Uncertainty-Guided Search and Transfer for Fast Stereo Matching)**, a coarse-to-fine framework that addresses these complementary limitations. First, a two-stage **Senior–Junior Teacher Assistant (SJTA)** distillation strategy transfers expressive monocular representations to a compact ViT-S backbone. A teacher-enriched intermediate representation is constructed using cross-attention and self-attention, and the lightweight student learns from this representation through feature distillation. Second, an **Uncertainty-Guided Residual Search Module (UGRSM)** estimates the reliability of propagated disparity and predicts residual offsets that adaptively reposition local cost-volume centers before refinement. The combined design improves the robustness of stereo correspondence estimation and supports strong zero-shot generalization across KITTI, ETH3D, and Middlebury. Experiments with approximately **1.4 million synthetic stereo pairs** report **0.95 px EPE on KITTI 2015** and **3.06% Bad 1.0 on ETH3D**.
+Coarse-to-fine stereo matching enables efficient disparity estimation but remains sensitive to errors in propagated disparity, which may place ground-truth correspondences outside subsequent local search ranges. We propose TRUST-Stereo (**T**eacher-Assisted **R**obust **U**ncertainty-Guided **S**earch and **T**ransfer for fast **Stereo**), which addresses this limitation through an Uncertainty-Guided Residual Search Module (UGRSM). UGRSM estimates the reliability of propagated disparity and predicts residual offsets to adaptively relocate local cost-volume centers. Additionally, we introduce a two-stage Senior–Junior Teacher Assistant knowledge distillation strategy to transfer rich monocular representations from a large foundation model to a lightweight backbone to achieve real-time stereo matching performance. Experiments on KITTI 2012, KITTI 2015, ETH3D, and Middlebury demonstrate strong zero-shot generalization. Using only 1.4M synthetic stereo pairs, TRUST-Stereo achieves state-of-the-art results on several benchmark metrics, outperforming competing efficient methods trained with substantially larger datasets, including real-world pseudo-labeled samples. Specifically, it achieves a KITTI 2015 EPE of **0.93**, ETH3D Bad 1.0 of **2.13%**, and Middlebury Bad 2.0 of **6.79%**, while maintaining real-time inference at approximately **50 ms per stereo pair**.
 
-*The abstract above is a README-oriented adaptation of the research manuscript, not a verbatim quotation of a finalized publication.*
+## Overview
 
-## Highlights
+![TRUST-Stereo architecture showing SJTA distillation, coarse-to-fine stereo matching, UGRSM, and stereo/monocular guided refinement](assets/architecture.png)
 
-- **Teacher-assisted representation transfer:** SJTA uses a senior–junior teacher-assistant strategy to distill strong foundation-model features into a lightweight stereo backbone.
-- **Uncertainty-aware correspondence search:** UGRSM predicts uncertainty-guided residual offsets to reposition local search centers when coarse predictions are unreliable.
-- **Coarse-to-fine estimation:** Global stereo matching at **1/16** resolution, followed by local refinement at **1/8** and **1/4** resolution.
-- **Zero-shot generalization:** Evaluation on real-world stereo datasets without target-domain fine-tuning.
-- **Full-resolution output:** The inference demo produces a disparity map with the same height and width as the input RGB images.
+*Figure 1. TRUST-Stereo architecture. Original diagram provided by the authors.*
 
-## Method overview
+The framework has two complementary components:
 
-```mermaid
-flowchart TD
-    subgraph TRAIN[Teacher-assisted training]
-        TL[Large pretrained teacher] --> TA[Teacher-assistant feature fusion]
-        TS[Student representations] --> TA
-        TA --> KD[Feature-level distillation]
-        KD --> STUD[Trained lightweight student]
-    end
-    subgraph TEST[Stereo inference]
-        L[Left RGB] --> FEAT[Stereo feature extraction]
-        R[Right RGB] --> FEAT
-        FEAT --> C16[1/16 global correspondence]
-        C16 --> U8[1/8 uncertainty-guided local search]
-        U8 --> U4[1/4 uncertainty-guided local search]
-        U4 --> DISP[Full-resolution disparity]
-    end
-    STUD -. learned representations .-> FEAT
-```
+- **Senior–Junior Teacher Assistant (SJTA) distillation.** A large Depth Anything V2 ViT-L teacher supports a two-stage distillation strategy using intermediate teacher-assistant representations. The trained, lightweight ViT-S student is used for inference.
+- **Uncertainty-Guided Residual Search Module (UGRSM).** UGRSM estimates the reliability of a propagated disparity prediction and predicts an offset that moves the center of the next local search window. This helps recover correspondences that could otherwise fall outside a fixed local search range.
 
-**SJTA** strengthens the feature representation used for stereo correspondence. **UGRSM** targets the separate failure mode in which an inaccurate propagated disparity moves the correct correspondence outside the next local search window. The large teacher/assistant representations are part of the distillation strategy; the full teacher-assistant training procedure is not repeated for every inference pair.
+Stereo matching proceeds from a **1/16-resolution global cost volume** through **1/8- and 1/4-resolution local matching/refinement**. The architecture additionally incorporates monocular-guided refinement and stereo-guided alignment before full-resolution disparity prediction.
 
-## Repository layout
+## Results
+
+### Quantitative zero-shot results
+
+The following numbers are **reported in the project abstract** for the model trained using approximately **1.4 million synthetic stereo pairs**:
+
+| Benchmark | Metric (lower is better) | TRUST-Stereo |
+|:--|:--|--:|
+| KITTI 2015 | End-Point Error (EPE) | **0.93 px** |
+| ETH3D | Bad 1.0 | **2.13%** |
+| Middlebury | Bad 2.0 | **6.79%** |
+
+**Reported inference time:** approximately **50 ms per stereo pair**. Actual latency depends on GPU hardware, input resolution, precision, and implementation settings. These are research results, not metrics computed by the single-pair inference demo. Please follow the appropriate benchmark evaluation protocol when reproducing them.
+
+### Qualitative comparisons
+
+![Author-provided qualitative comparison: input images and disparities from LightStereo-M, BANet-2D, Fast Foundation Stereo, and TRUST-Stereo](assets/qualitative_comparison.png)
+
+*Figure 2. Original qualitative comparison supplied with the project. Columns show the input image, LightStereo-M, BANet-2D, Fast Foundation Stereo, and TRUST-Stereo.*
+
+### Real-world laboratory stereo example
+
+The following is a **zero-shot example from a laboratory robot scene**, using the original left and right RGB images and the corresponding TRUST-Stereo disparity visualization.
+
+<table>
+  <tr>
+    <th align="center">Left RGB image</th>
+    <th align="center">Right RGB image</th>
+    <th align="center">TRUST-Stereo disparity</th>
+  </tr>
+  <tr>
+    <td><img src="assets/lab_left.png" alt="Left RGB view of laboratory robotic scene" width="420" /></td>
+    <td><img src="assets/lab_right.png" alt="Right RGB view of laboratory robotic scene" width="420" /></td>
+    <td><img src="assets/lab_disparity.png" alt="Colorized disparity estimated by TRUST-Stereo" width="420" /></td>
+  </tr>
+</table>
+
+A colored 3D point cloud is also provided as an optional example artifact: **[Download the laboratory point cloud (.ply)](assets/lab_pointcloud_RGB_meters.ply)**. You can open it in a PLY-compatible 3D viewer (such as Open3D or CloudCompare).
+
+> The standalone demo below **outputs disparity maps**, not a point cloud. Metric 3D reconstruction additionally requires valid stereo calibration (focal length, baseline, and rectification parameters). The supplied PLY is an example result, not an output automatically produced by the current inference script.
+
+## Repository structure
 
 ```text
 TRUST-Stereo/
+├── README.md
+├── assets/
+│   ├── architecture.png
+│   ├── qualitative_comparison.png
+│   ├── lab_left.png
+│   ├── lab_right.png
+│   ├── lab_disparity.png
+│   └── lab_pointcloud_RGB_meters.ply
 ├── config/
 │   └── TRUST_inference.yaml
 ├── core/
 │   ├── models/
 │   │   └── TRUST_Stereo_Stage2.py
 │   └── ...
-├── scripts/
-│   └── Zero_shot_test_Demo.py
-└── README.md
+└── scripts/
+    └── Zero_shot_test_Demo.py
 ```
 
-The following **additional assets are required by the currently published model code** but are not part of the repository layout shown above:
+The `assets/` folder above is included with this README package and should be uploaded to the repository root. The following model assets are **additional requirements** for the currently published model implementation; see [Model assets and weights](#model-assets-and-weights).
+
+## Installation
+
+### System requirements
+
+- Python **3.10** (reference development version: **3.10.20**).
+- A compatible **NVIDIA CUDA GPU** for the current zero-shot inference script.
+- PyTorch **2.6.0** and Torchvision **0.21.0**, both using the **CUDA 12.4** build in the reference environment.
+- A matching trained TRUST-Stereo checkpoint and the custom model components described below.
+
+These package versions were **read from the original `new_env` environment**. The commands create a **new** environment and do not require modifying the original research environment.
+
+### 1. Clone the repository and create an environment
+
+```bash
+git clone https://github.com/PouyaSohrabipour/TRUST-Stereo.git
+cd TRUST-Stereo
+
+conda create -n trust-stereo python=3.10 -y
+conda activate trust-stereo
+```
+
+### 2. Install PyTorch (CUDA 12.4)
+
+```bash
+python -m pip install torch==2.6.0 torchvision==0.21.0 \
+  --index-url https://download.pytorch.org/whl/cu124
+```
+
+Use a different PyTorch build if required by your GPU and driver, while ensuring compatibility with the model implementation.
+
+### 3. Install Python dependencies
+
+```bash
+python -m pip install \
+  numpy==2.2.6 \
+  scipy==1.15.3 \
+  opencv-python==4.12.0.88 \
+  Pillow==12.0.0 \
+  matplotlib==3.10.8 \
+  omegaconf==2.3.0 \
+  timm==1.0.27 \
+  einops==0.8.2 \
+  opt-einsum==3.4.0
+```
+
+These are reference versions from the inspected environment, **not a guaranteed minimal or independently validated clean-room installation**. Dependencies within the project's modified Depth Anything V2 source must also be present.
+
+#### Additional training dependencies
+
+The training environment also contained:
+
+```bash
+python -m pip install \
+  accelerate==1.12.0 \
+  hydra-core==1.3.2 \
+  swanlab==0.7.5 \
+  tqdm==4.67.1 \
+  PyYAML==6.0.3 \
+  scikit-image==0.25.2 \
+  imageio==2.37.2
+```
+
+These are intended for **training/data-processing workflows**, not necessarily for single-pair inference. The inspected environment did not have `xformers`, `flash-attn`, or Hugging Face `transformers` installed, so they are not listed as baseline requirements.
+
+## Model assets and weights
+
+The currently published Stage 2 model expects a **modified Depth Anything V2 implementation**, not just a pip package. It imports custom modules from the following repository-relative location:
 
 ```text
 TRUST-Stereo/
 ├── Depth-Anything-V2-list_intermediate_level/
 │   └── depth_anything_v2/
-│       └── dpt.py             # Modified implementation expected by the model
+│       └── dpt.py
 ├── pretrained/
 │   ├── depth_anything_v2_vits.pth
 │   └── depth_anything_v2_vitl.pth
 └── checkpoints/
-    └── <your-compatible-TRUST-checkpoint>.pth
+    └── <TRUST-Stereo-Stage2-checkpoint>.pth
 ```
 
-The custom `depth_anything_v2.dpt` module must provide `DepthAnythingV2`, `DepthAnythingV2_decoder`, `IntermediateDPTHead`, and `IntermediateDPTFeatureHead`. **The unmodified upstream Depth Anything V2 repository is not a drop-in replacement for this custom module.**
+The custom `depth_anything_v2.dpt` implementation must expose `DepthAnythingV2`, `DepthAnythingV2_decoder`, `IntermediateDPTHead`, and `IntermediateDPTFeatureHead`. The model currently loads the ViT-S and ViT-L pretrained backbone files during initialization before loading the final Stage 2 checkpoint.
 
-## Installation
+- **TRUST-Stereo pretrained weights:** Public download URL to be added when released. Use a compatible local `.pth` checkpoint meanwhile.
+- **Foundation-model source:** [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2). The upstream repository does **not** by itself provide the custom intermediate modules expected by the current TRUST-Stereo code.
 
-### Requirements
-
-- **Python 3.10** (development environment: **3.10.20**)
-- **PyTorch 2.6.0** and **Torchvision 0.21.0**, built for **CUDA 12.4**
-- A compatible **NVIDIA CUDA GPU** for the current inference script
-- The local source files and checkpoints described in [Required model assets](#required-model-assets)
-
-The package versions below were read from the original training environment, `new_env`. They are **reference versions**, not a claim that a fresh install has been independently validated on every hardware platform.
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/PouyaSohrabipour/TRUST-Stereo.git
-cd TRUST-Stereo
-```
-
-### 2. Create a separate environment
-
-```bash
-conda create -n trust-stereo python=3.10 -y
-conda activate trust-stereo
-```
-
-**Do not install into an existing research environment unless you intend to change that environment.** The commands here create and modify only the new `trust-stereo` environment.
-
-### 3. Install PyTorch with CUDA 12.4
-
-```bash
-python -m pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
-```
-
-### 4. Install the inference-related Python packages
-
-```bash
-python -m pip install \
-    numpy==2.2.6 \
-    scipy==1.15.3 \
-    opencv-python==4.12.0.88 \
-    Pillow==12.0.0 \
-    matplotlib==3.10.8 \
-    omegaconf==2.3.0 \
-    timm==1.0.27 \
-    einops==0.8.2 \
-    opt-einsum==3.4.0
-```
-
-These packages reflect the inspected source and the working environment. Other imports may be needed by the custom Depth Anything V2 source once it is distributed.
-
-### Optional: Training-related packages
-
-The original training environment also contained:
-
-```bash
-python -m pip install \
-    accelerate==1.12.0 \
-    hydra-core==1.3.2 \
-    swanlab==0.7.5 \
-    tqdm==4.67.1 \
-    PyYAML==6.0.3 \
-    scikit-image==0.25.2 \
-    imageio==2.37.2
-```
-
-These are **not required merely to run the standalone demo** unless one of your local modules imports them. Training scripts, datasets, and full experiment-reproduction instructions are separate from this quick-start guide. The inspected training environment did **not** contain `xformers`, `flash-attn`, or the Hugging Face `transformers` package; they are therefore not listed as required installations.
-
-## Required model assets
-
-Before running the demo, supply:
-
-1. **A compatible TRUST-Stereo Stage 2 checkpoint** (`.pth`). Specify its path with `--weights`.
-2. **The modified Depth Anything V2 implementation** expected at `Depth-Anything-V2-list_intermediate_level/depth_anything_v2/`.
-3. **Depth Anything V2 pretrained ViT-S and ViT-L weights** at `pretrained/depth_anything_v2_vits.pth` and `pretrained/depth_anything_v2_vitl.pth`, respectively, as currently required by model initialization.
-
-The model constructor loads those backbone weights before the final TRUST-Stereo checkpoint. They are therefore needed with the current implementation even for inference. For information about the original foundation model, see [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2). Be sure to use the appropriate checkpoint sources and observe their licenses.
-
-**Pretrained TRUST-Stereo checkpoint download:** A public checkpoint URL has not yet been documented in this repository. Until one is supplied, use an existing compatible local checkpoint.
+Please check the licensing and distribution terms before publishing any third-party weights or source files.
 
 ## Zero-shot inference
 
-The demo accepts **any pair of equal-sized, rectified RGB stereo images**. No ground-truth disparity map or benchmark-specific dataset loader is required.
+Run the model on **two equal-sized, rectified RGB images**. Ground-truth disparity and a benchmark dataset installation are **not required**.
 
-From the repository root, run:
+From the repository root:
 
 ```bash
 python scripts/Zero_shot_test_Demo.py \
-    --left /path/to/left.png \
-    --right /path/to/right.png \
-    --weights /path/to/trust_stage2.pth \
-    --config config/TRUST_inference.yaml \
-    --output_dir outputs/example \
-    --iters 4
+  --left assets/lab_left.png \
+  --right assets/lab_right.png \
+  --weights /path/to/TRUST_stage2.pth \
+  --config config/TRUST_inference.yaml \
+  --output_dir outputs/lab_demo \
+  --iters 4
 ```
 
-**Note:** `--config config/TRUST_inference.yaml` is provided explicitly because the currently published demo script still has an outdated default configuration filename.
+Replace `--weights` with the path to your trained Stage 2 checkpoint. The demo pads inputs to dimensions divisible by 32, runs inference, and unpads the result so that the saved disparity has the **same height and width as the original images**.
 
-### Arguments
+### Command-line options
 
-| Argument | Description |
-|---|---|
-| `--left` | Path to the left RGB image (required). |
-| `--right` | Path to the right RGB image (required). |
-| `--weights` | Path to a compatible TRUST-Stereo `.pth` checkpoint (required). |
-| `--config` | YAML configuration; use `config/TRUST_inference.yaml`. |
-| `--output_dir` | Output directory; defaults to `outputs/zero_shot`. |
-| `--iters` | Number of inference iterations; defaults to `4`. |
+| Option | Meaning |
+|:--|:--|
+| `--left` | Input left RGB image path (**required**). |
+| `--right` | Input right RGB image path (**required**). |
+| `--weights` | Trained TRUST-Stereo Stage 2 `.pth` checkpoint (**required**). |
+| `--config` | Inference configuration; use `config/TRUST_inference.yaml`. |
+| `--output_dir` | Folder for generated outputs (default: `outputs/zero_shot`). |
+| `--iters` | Number of inference iterations (default: `4`). |
 
 ### Output files
 
-The script saves these files in `--output_dir`:
+```text
+outputs/lab_demo/
+├── disparity.npy
+├── disparity.pfm
+├── disparity_16bit.png
+└── disparity_vis.png
+```
 
-| File | Description |
-|---|---|
-| `disparity.npy` | **Float32 full-resolution disparity**, in pixels. Recommended for downstream processing. |
-| `disparity.pfm` | Float32 PFM disparity, in pixels. Useful for stereo tools and evaluation pipelines. |
-| `disparity_16bit.png` | Unsigned 16-bit PNG, encoded as `round(disparity × 256)` after clipping to the representable range. |
-| `disparity_vis.png` | Colorized disparity preview using the `turbo` colormap. For visualization only. |
+| Output | Description |
+|:--|:--|
+| `disparity.npy` | Full-resolution `float32` disparity values in **pixels**, recommended for downstream use. |
+| `disparity.pfm` | Full-resolution floating-point disparity in PFM format. |
+| `disparity_16bit.png` | Unsigned 16-bit PNG storing approximately `round(disparity * 256)`, clipped to its representable range. |
+| `disparity_vis.png` | Colorized disparity visualization using the `turbo` colormap; **not** a metric depth map. |
 
-The 16-bit PNG can represent nonnegative disparities up to approximately **255.996 pixels**; larger or negative values are clipped. Use `disparity.npy` or `disparity.pfm` to retain the full floating-point prediction.
+The 16-bit PNG format described above clips negative values and disparities larger than approximately **256 px**. Use the `.npy` or `.pfm` outputs to preserve floating-point disparity outside that range.
 
-The demo uses the original input scale, pads the images to a multiple of **32** during inference, and removes the padding before saving. The saved disparity therefore has the **same spatial resolution as the original input images**.
-
-### Using the disparity in Python
+To load a prediction:
 
 ```python
 import numpy as np
 
-disparity = np.load("outputs/example/disparity.npy")  # [H, W], float32
-print("Disparity shape:", disparity.shape)
-print("Disparity range:", disparity.min(), disparity.max())
+disparity = np.load("outputs/lab_demo/disparity.npy")
+print(disparity.shape, disparity.dtype)  # (H, W), float32
 ```
 
-**Input assumptions:** The images should be a calibrated/rectified stereo pair with consistent dimensions and a horizontal epipolar geometry. Arbitrary unrelated RGB images or unrectified camera views are not expected to produce geometrically meaningful disparity. Disparity is in **pixels**, not metric depth; conversion to depth requires camera intrinsics and stereo baseline.
+> **Geometry note:** A rectified stereo pair is required for meaningful stereo correspondence. Disparity is measured in image pixels, not meters. Obtaining metric depth or a metric point cloud requires calibrated camera intrinsics and the stereo baseline.
 
-## Reported zero-shot results
+## Reproducibility and current release notes
 
-Selected results reported for the model trained with approximately **1.4 million synthetic stereo pairs**:
+The following versions were observed in the original Conda environment:
 
-| Benchmark | Metric | Reported result |
-|---|---|---:|
-| KITTI 2015 | EPE ↓ | **0.95 px** |
-| ETH3D | Bad 1.0 ↓ | **3.06%** |
-
-These are **research results from the manuscript**, not measurements produced by the single-pair inference demo. Benchmark-specific masks, preprocessing, evaluation conventions, and the exact checkpoint matter when reproducing them. The demo does not compute EPE or Bad-pixel metrics because it does not require ground truth.
-
-## Current compatibility notes
-
-The public source needs the following items addressed for a fully self-contained, reproducible release:
-
-- **Model class name:** `Zero_shot_test_Demo.py` imports `TRUST` from `core/models/TRUST_Stereo_Stage2.py`, while the currently published model file defines `class URS`. The import and class declaration must agree before running the demo. The intended public class name is **`TRUST`**.
-- **Configuration default:** The demo's default still refers to an older `URS3_...yaml`. For now, **always pass `--config config/TRUST_inference.yaml`**, as shown above.
-- **Custom Depth Anything V2 source:** The model imports classes from a modified local implementation that is not included in the visible repository layout.
-- **Pretrained weights:** The model initialization expects the ViT-S and ViT-L checkpoint files under `pretrained/`; a compatible final TRUST-Stereo checkpoint must also be supplied.
-
-These are repository packaging issues, **not** additional Python package installation requirements. If inference fails before the first forward pass, check these items first.
-
-## Reproducibility
-
-The reference development environment used:
-
-| Component | Version |
-|---|---|
+| Component | Reference version |
+|:--|:--|
 | Python | `3.10.20` |
 | PyTorch | `2.6.0+cu124` |
 | Torchvision | `0.21.0+cu124` |
-| CUDA version used to build PyTorch | `12.4` |
+| CUDA version reported by PyTorch | `12.4` |
 | Triton | `3.2.0` |
 | NumPy | `2.2.6` |
+| SciPy | `1.15.3` |
 | OpenCV | `4.12.0.88` |
 | Accelerate (training) | `1.12.0` |
 | Hydra (training) | `1.3.2` |
 | SwanLab (training) | `0.7.5` |
 
-A CUDA-enabled PyTorch installation does not guarantee that a GPU is available in the current shell. For example, HPC login sessions often have no allocated CUDA device. Run inference on a CUDA-enabled GPU node.
+**Important compatibility notes for the current public repository:**
+
+1. The demo imports `TRUST` from `core/models/TRUST_Stereo_Stage2.py`, but the public model file still declares `class URS`. The exported class name and the import **must be made consistent** before inference will work. The intended class name is `TRUST`.
+2. The public demo currently defaults to an outdated `URS3_...yaml`. **Explicitly pass `--config config/TRUST_inference.yaml`**, as in the example above.
+3. The custom Depth Anything V2 implementation and prerequisite checkpoints are not yet part of the visible repository release. The demo cannot be run from a fresh clone alone until those assets are supplied.
+4. The CUDA-enabled PyTorch package can report `torch.cuda.is_available() == False` on an HPC login node without GPU allocation. Run inference on a node with an available CUDA GPU.
 
 ## Citation
 
-The formal paper citation will be added when a public manuscript identifier or publication record is available. Until then, please refer to this project as:
+The formal BibTeX entry will be added once the TRUST-Stereo manuscript is publicly released or published. In the meantime, please reference the project by its title:
 
 > **TRUST-Stereo: Teacher-Assisted Robust Uncertainty-Guided Search and Transfer for Fast Stereo Matching**
 
-Related research: [URS-Stereo](https://arxiv.org/abs/2607.06779).
-
 ## Acknowledgments
 
-TRUST-Stereo builds on research in stereo correspondence, coarse-to-fine recurrent refinement, and foundation-model feature extraction, including [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2). Please also follow the attribution and license terms of any third-party source code, pretrained models, and datasets used in your experiments.
+TRUST-Stereo builds on research in deep stereo matching, recurrent coarse-to-fine disparity refinement, and foundation-model representation learning, including [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2). We thank the developers of publicly available benchmarks and foundational methods used in our research.
 
 ## License
 
-No explicit license file was visible in the repository at the time this README was prepared. Public repository access does not by itself grant a software license; consult the repository owner before reuse or redistribution.
+A software license has not yet been specified in this README package. See the repository's license file, if one is added, before reuse or redistribution.
