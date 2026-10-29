@@ -43,7 +43,7 @@ The following numbers are **reported in the project abstract** for the model tra
 | ETH3D | Bad 1.0 | **2.13%** |
 | Middlebury | Bad 2.0 | **6.79%** |
 
-**Reported inference time:** approximately **50 ms per stereo pair**. Actual latency depends on GPU hardware, input resolution, precision, and implementation settings. These are research results, not metrics computed by the single-pair inference demo. Please follow the appropriate benchmark evaluation protocol when reproducing them.
+
 
 ### Qualitative comparisons
 
