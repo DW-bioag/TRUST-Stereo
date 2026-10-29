@@ -100,7 +100,6 @@ TRUST-Stereo/
     └── Zero_shot_test_Demo.py
 ```
 
-The `assets/` folder above is included with this README package and should be uploaded to the repository root. The following model assets are **additional requirements** for the currently published model implementation; see [Model assets and weights](#model-assets-and-weights).
 
 ## Installation
 
