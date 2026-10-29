@@ -1,24 +1,4 @@
 
-#!/usr/bin/env python3
-"""Run TRUST-Stereo Stage 2 on one rectified RGB stereo pair.
-
-Example (from the TRUST-Stereo repository root):
-    python zero_shot_test.py \
-        --left /path/to/left.png \
-        --right /path/to/right.png \
-        --weights /path/to/checkpoint.pth \
-        --config config/URS3_sf_M10_4M_zero_shot_stage2.yaml \
-        --output_dir outputs/example
-
-Outputs:
-    disparity.npy       float32 disparity in pixels, exact prediction
-    disparity.pfm       float32 disparity in pixels, stereo-friendly
-    disparity_16bit.png uint16 disparity * 256 (negative values clamped)
-    disparity_vis.png   false-color visualization (not metric disparity)
-
-Note: RGB images must already be rectified. This script does not compute depth
-or evaluate ground-truth accuracy.
-"""
 
 import argparse
 import sys
